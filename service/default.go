@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
 
 // Home renders index.html
 func Home(ctx *gin.Context) {
-	ctx.HTML(http.StatusOK, "index.html", gin.H{"Title": "HOME"})
+	IsLoggedIn := sessions.Default(ctx).Get(userkey) != nil
+	ctx.HTML(http.StatusOK, "index.html", gin.H{"Title": "HOME", "IsLoggedIn": IsLoggedIn})
 }
 
 // NotImplemented renders error.html with 501 Not Implemented
