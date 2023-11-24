@@ -11,9 +11,15 @@ import (
 )
 
 const userkey = "user"
+const userNamekey = "username"
 
 func NewUserForm(ctx *gin.Context) {
 	ctx.HTML(http.StatusOK, "new_user_form.html", gin.H{"Title": "Register user"})
+}
+
+func UserPage(ctx *gin.Context) {
+	userName := sessions.Default(ctx).Get(userNamekey)
+	ctx.HTML(http.StatusOK, "user.html", gin.H{"Title": "User page", "Username": userName})
 }
 
 func RegisterUser(ctx *gin.Context) {
@@ -73,9 +79,95 @@ func RegisterUser(ctx *gin.Context) {
 
 	session := sessions.Default(ctx)
 	session.Set(userkey, id)
+	session.Set(userNamekey, username)
 	session.Save()
 
 	ctx.Redirect(http.StatusFound, "/")
+}
+
+func EditUserForm(ctx *gin.Context) {
+	ctx.HTML(http.StatusOK, "form_edit_user.html", gin.H{"Title": "Edit user"})
+}
+
+func EditUser(ctx *gin.Context) {
+	// フォームデータの受け取り
+	currentUserName := sessions.Default(ctx).Get(userNamekey).(string)
+	newUsername := ctx.PostForm("new_username")
+	password := ctx.PostForm("password")
+	newPassword := ctx.PostForm("new_password")
+	newPasswordConfirm := ctx.PostForm("new_password_confirm")
+	switch {
+	case newUsername == "" && newPassword == "":
+		ctx.HTML(http.StatusBadRequest, "form_edit_user.html", gin.H{"Title": "Edit user", "Error": "No Changes", "NewUsername": newUsername, "NewPassword": newPassword})
+		return
+	case newUsername == currentUserName && newPassword == "":
+		ctx.HTML(http.StatusBadRequest, "form_edit_user.html", gin.H{"Title": "Edit user", "Error": "Same with current name", "NewUsername": newUsername, "NewPassword": newPassword})
+		return
+	case password == "":
+		ctx.HTML(http.StatusBadRequest, "form_edit_user.html", gin.H{"Title": "Edit user", "Error": "Password is not provided", "NewUsername": newUsername, "NewPassword": newPassword})
+		return
+	case newPassword != "" && newPassword != newPasswordConfirm:
+		ctx.HTML(http.StatusBadRequest, "form_edit_user.html", gin.H{"Title": "Edit user", "Error": "Re-Input of new password is not provided", "NewUsername": newUsername, "NewPassword": newPassword})
+		return
+	}
+
+	// DB 接続
+	db, err := database.GetConnection()
+	if err != nil {
+		Error(http.StatusInternalServerError, err.Error())(ctx)
+		return
+	}
+
+	// 重複チェック
+	if newUsername != "" {
+		var duplicate int
+		err = db.Get(&duplicate, "SELECT COUNT(*) FROM users WHERE name=?", newUsername)
+		if err != nil {
+			Error(http.StatusInternalServerError, err.Error())(ctx)
+			return
+		}
+		if duplicate > 0 {
+			ctx.HTML(http.StatusBadRequest, "form_edit_user.html", gin.H{"Title": "Edit user", "Error": "Username is already taken", "NewUsername": newUsername, "NewPassword": newPassword})
+			return
+		}
+	} else {
+		newUsername = currentUserName
+	}
+
+	if newPassword != "" {
+		if ok, msg := checkPasswordFormat(newPassword); !ok {
+			ctx.HTML(http.StatusBadRequest, "form_edit_user.html", gin.H{"Title": "Edit user", "Error": msg, "NewUsername": newUsername, "NewPassword": newPassword})
+			return
+		}
+	} else {
+		newPassword = password
+	}
+
+	// ユーザの取得
+	var user database.User
+	err = db.Get(&user, "SELECT id, name, password, is_deleted FROM users WHERE id = ?", sessions.Default(ctx).Get(userkey))
+	if err != nil {
+		ctx.HTML(http.StatusBadRequest, "form_edit_user.html", gin.H{"Title": "Edit user", "Error": "You don't exist", "NewUsername": newUsername, "NewPassword": newPassword})
+		return
+	}
+
+	// パスワードの照合
+	if hex.EncodeToString(user.Password) != hex.EncodeToString(hash(password)) {
+		ctx.HTML(http.StatusBadRequest, "form_edit_user.html", gin.H{"Title": "Edit user", "Error": "Incorrect password", "NewUsername": newUsername, "NewPassword": newPassword})
+		return
+	}
+
+	_, err = db.Exec("UPDATE users SET name = ?, password = ? WHERE id = ?", newUsername, hash(newPassword), user.ID)
+	if err != nil {
+		Error(http.StatusInternalServerError, err.Error())(ctx)
+		return
+	}
+
+	session := sessions.Default(ctx)
+	session.Set(userNamekey, newUsername)
+	session.Save()
+
+	ctx.Redirect(http.StatusFound, "/user")
 }
 
 func DeleteUser(ctx *gin.Context) {
@@ -143,9 +235,10 @@ func Login(ctx *gin.Context) {
 	// セッションの保存
 	session := sessions.Default(ctx)
 	session.Set(userkey, user.ID)
+	session.Set(userNamekey, user.Name)
 	session.Save()
 
-	ctx.Redirect(http.StatusFound, "/list")
+	ctx.Redirect(http.StatusFound, "/user")
 }
 
 func Logout(ctx *gin.Context) {

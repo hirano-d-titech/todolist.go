@@ -1,0 +1,9 @@
+{{ template "header" . }}
+<h1> {{.Username}}'s user page </h1>
+<ul>
+    <li><a href="/list">登録済みタスク一覧</a></li>
+    <li><a href="/user/edit">ユーザー情報編集</a></li>
+    <li><a href="/user/logout">ログアウト</a></li><br>
+    <button type="button" onclick="confirm_delete_user()">退会</button>
+</ul>
+{{ template "footer" }}

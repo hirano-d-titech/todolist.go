@@ -49,15 +49,15 @@ func main() {
 	engine.GET("/login", service.LoginForm)
 	engine.POST("/login", service.Login)
 
-	engine.GET("/user/logout", service.Logout)
-	engine.GET("/user/delete", service.DeleteUser)
-
-	// userGroup := engine.Group("/user")
-	// userGroup.Use(service.LoginCheck)
-	// {
-	// 	userGroup.GET("/logout", service.Logout)
-	// 	userGroup.GET("/delete", service.DeleteUser)
-	// }
+	userGroup := engine.Group("/user")
+	userGroup.Use(service.LoginCheck)
+	{
+		userGroup.GET("/", service.UserPage)
+		userGroup.GET("/edit", service.EditUserForm)
+		userGroup.POST("/edit", service.EditUser)
+		userGroup.GET("/logout", service.Logout)
+		userGroup.GET("/delete", service.DeleteUser)
+	}
 
 	engine.GET("/list", service.LoginCheck, service.TaskList)
 
